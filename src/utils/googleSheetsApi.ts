@@ -100,11 +100,48 @@ export async function fetchFromGoogleSheets(
     const json = await response.json();
     if (json.status === 'success' && json.data) {
       const parsedConfig = json.data.config ? normalizeSpreadsheetConfig(json.data.config) : undefined;
+      
+      // Normalize members list so empty or non-explicit statuses default to 'aktif'
+      const normalizedAnggota: Anggota[] = Array.isArray(json.data.anggota)
+        ? json.data.anggota.map((m: any) => {
+            const rawStatus = String(m.status || '').trim().toLowerCase();
+            const isNonAktif = rawStatus === 'nonaktif' || rawStatus === 'non-aktif' || rawStatus === 'keluar' || rawStatus === 'pasif' || rawStatus === 'tidak aktif';
+            return {
+              id_anggota: String(m.id_anggota || '').trim(),
+              nama: String(m.nama || '').trim(),
+              no_hp: String(m.no_hp || '').trim(),
+              tanggal_gabung: String(m.tanggal_gabung || ''),
+              status: isNonAktif ? 'nonaktif' : 'aktif',
+              alamat: String(m.alamat || '').trim(),
+              catatan: String(m.catatan || '').trim(),
+            };
+          }).filter((m: Anggota) => Boolean(m.id_anggota && m.nama))
+        : [];
+
+      // Normalize transactions
+      const normalizedSetoran: Setoran[] = Array.isArray(json.data.setoran)
+        ? json.data.setoran.map((s: any) => ({
+            id_setoran: String(s.id_setoran || '').trim(),
+            id_anggota: String(s.id_anggota || '').trim(),
+            nama_anggota: String(s.nama_anggota || '').trim(),
+            tanggal: String(s.tanggal || '').trim(),
+            waktu: String(s.waktu || '').trim(),
+            jenis: (String(s.jenis || '').toLowerCase().includes('tarik') || String(s.jenis || '').toLowerCase().includes('refund')) ? 'tarik' : 'setor',
+            jumlah: Number(s.jumlah) || 0,
+            saldo_setelah: Number(s.saldo_setelah) || 0,
+            keterangan_program: String(s.keterangan_program || '').trim(),
+            dicatat_oleh: String(s.dicatat_oleh || 'Bendahara').trim(),
+            catatan: String(s.catatan || '').trim(),
+          })).filter((s: Setoran) => Boolean(s.id_setoran && s.id_anggota))
+        : [];
+
       return {
         success: true,
         message: 'Data berhasil ditarik 100% dari Google Sheets!',
         data: {
           ...json.data,
+          anggota: normalizedAnggota,
+          setoran: normalizedSetoran,
           config: parsedConfig,
         },
         timestamp: json.timestamp || new Date().toISOString(),

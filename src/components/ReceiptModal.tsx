@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import html2canvas from 'html2canvas-pro';
-import { jsPDF } from 'jspdf';
 import { MajlisTaklimConfig, Setoran } from '../types';
 import { formatDateIndo, formatRupiah, generateWhatsAppMessage } from '../utils/formatters';
 import { APP_LOGO, APP_NAME, APP_SUBTITLE } from '../assets/logo';
-import { Printer, Share2, Check, X, ShieldCheck, HeartHandshake, Image as ImageIcon, Loader2, FileText, Download } from 'lucide-react';
+import { Printer, Share2, Check, X, ShieldCheck, HeartHandshake, Loader2, Download } from 'lucide-react';
 
 interface ReceiptModalProps {
   transaction: Setoran | null;
@@ -14,8 +13,7 @@ interface ReceiptModalProps {
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, config, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -29,83 +27,29 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, config,
     window.print();
   };
 
-  // Helper to generate jsPDF instance from the receipt DOM element
-  const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
+  // Helper to generate Image Blob (PNG) from the receipt DOM element
+  const generateImageBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
     const receiptElem = document.getElementById('printable-receipt');
     if (!receiptElem) return null;
 
     const canvas = await html2canvas(receiptElem, {
-      scale: 2.5,
+      scale: 3, // High-DPI for crisp text and graphics
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    const pdfWidth = 90; // mm
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: [pdfWidth + 8, pdfHeight + 8],
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          resolve(null);
+          return;
+        }
+        const safeName = (transaction.nama_anggota || 'jamaah').replace(/\s+/g, '_');
+        const filename = `Kwitansi_${transaction.id_setoran}_${safeName}.png`;
+        resolve({ blob, filename });
+      }, 'image/png');
     });
-
-    pdf.addImage(imgData, 'JPEG', 4, 4, pdfWidth, pdfHeight);
-    const blob = pdf.output('blob');
-    const safeName = (transaction.nama_anggota || 'jamaah').replace(/\s+/g, '_');
-    const filename = `Kwitansi_${transaction.id_setoran}_${safeName}.pdf`;
-
-    return { blob, filename };
-  };
-
-  const handleDownloadPdf = async () => {
-    setIsGeneratingPdf(true);
-    try {
-      const result = await generatePdfBlob();
-      if (!result) throw new Error('Elemen kwitansi tidak ditemukan');
-
-      const url = URL.createObjectURL(result.blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = result.filename;
-      link.click();
-      URL.revokeObjectURL(url);
-      showToast('✓ File PDF Kwitansi berhasil diunduh!');
-    } catch (err) {
-      console.error('Gagal mengunduh PDF:', err);
-      showToast('⚠️ Gagal membuat PDF kwitansi.');
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
-
-  const handleDownloadImage = async () => {
-    const receiptElem = document.getElementById('printable-receipt');
-    if (!receiptElem) return;
-
-    setIsGeneratingImage(true);
-    try {
-      const canvas = await html2canvas(receiptElem, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-
-      const filename = `Kwitansi_${transaction.id_setoran}_${(transaction.nama_anggota || 'jamaah').replace(/\s+/g, '_')}.png`;
-      const image = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = filename;
-      link.click();
-      showToast('✓ Gambar PNG berhasil diunduh!');
-    } catch (err) {
-      console.error('Gagal membuat gambar kwitansi:', err);
-      showToast('⚠️ Gagal membuat gambar kwitansi.');
-    } finally {
-      setIsGeneratingImage(false);
-    }
   };
 
   const handleShareWA = async () => {
@@ -122,41 +66,36 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, config,
       idTransaksi: transaction.id_setoran,
     });
 
-    setIsGeneratingPdf(true);
+    setIsProcessing(true);
     try {
-      const result = await generatePdfBlob();
+      const result = await generateImageBlob();
 
-      // Check if navigator.share with files is supported (mobile & modern browsers)
+      // Check if navigator.share with image files is supported (Android/iOS & modern browsers)
       if (result && typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
-        const pdfFile = new File([result.blob], result.filename, { type: 'application/pdf' });
+        const imageFile = new File([result.blob], result.filename, { type: 'image/png' });
         
-        if (navigator.canShare({ files: [pdfFile] })) {
+        if (navigator.canShare({ files: [imageFile] })) {
           try {
             await navigator.share({
-              title: `Kwitansi SAKINA - ${transaction.id_setoran}`,
+              title: `Kwitansi ${APP_NAME} - ${transaction.id_setoran}`,
               text: text,
-              files: [pdfFile],
+              files: [imageFile],
             });
-            showToast('✓ Berhasil membagikan PDF ke WhatsApp!');
-            setIsGeneratingPdf(false);
+            showToast('✓ Berhasil membagikan bukti gambar ke WhatsApp!');
+            setIsProcessing(false);
             return;
           } catch (shareErr: any) {
             if (shareErr.name === 'AbortError') {
-              // User cancelled share dialog
-              setIsGeneratingPdf(false);
+              // User dismissed the share dialog
+              setIsProcessing(false);
               return;
             }
+            console.warn('Navigator share error fallback:', shareErr);
           }
         }
       }
 
-      // Fallback: Copy text to clipboard and open WhatsApp
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      showToast('✓ Teks tersalin! Membuka WhatsApp...');
-      setTimeout(() => setCopied(false), 2500);
-
-      // Auto-trigger PDF download on fallback desktop so user has the PDF ready to attach
+      // Fallback for Desktop/unsupported browsers: Download Image & Copy Text to WhatsApp Web
       if (result) {
         const url = URL.createObjectURL(result.blob);
         const link = document.createElement('a');
@@ -166,17 +105,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, config,
         URL.revokeObjectURL(url);
       }
 
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      showToast('✓ Gambar kwitansi diunduh & teks disalin! Membuka WhatsApp...');
+      setTimeout(() => setCopied(false), 2500);
+
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
     } catch (err) {
-      console.error('Error saat share PDF:', err);
-      // Last-resort fallback
+      console.error('Error saat share gambar WA:', err);
       navigator.clipboard.writeText(text).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2500);
         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
       });
     } finally {
-      setIsGeneratingPdf(false);
+      setIsProcessing(false);
     }
   };
 
@@ -349,63 +292,41 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, config,
           </div>
         )}
 
-        {/* Modal Actions */}
-        <div className="p-3.5 bg-white flex flex-wrap items-center gap-2 justify-end">
+        {/* Modal Actions - Simplified and Clear */}
+        <div className="p-3.5 bg-white flex items-center gap-2.5 justify-end border-t border-slate-100">
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 min-w-[90px] flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
-            title="Cetak Resi Fisik"
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200/90 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs flex items-center justify-center gap-1.5"
+            title="Cetak Kwitansi Fisik"
           >
-            <Printer className="w-3.5 h-3.5 text-purple-900" />
+            <Printer className="w-4 h-4 text-purple-900" />
             <span>Cetak</span>
           </button>
 
           <button
             type="button"
-            onClick={handleDownloadPdf}
-            disabled={isGeneratingPdf}
-            className="flex-1 min-w-[100px] flex items-center justify-center gap-1.5 bg-purple-50 hover:bg-purple-100 text-purple-950 border border-purple-200 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs disabled:opacity-50"
-            title="Unduh File PDF Kwitansi"
-          >
-            {isGeneratingPdf ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-900" />
-            ) : (
-              <FileText className="w-3.5 h-3.5 text-purple-900" />
-            )}
-            <span>PDF</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleDownloadImage}
-            disabled={isGeneratingImage}
-            className="flex-1 min-w-[100px] flex items-center justify-center gap-1.5 bg-purple-50 hover:bg-purple-100 text-purple-950 border border-purple-200 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs disabled:opacity-50"
-            title="Simpan Bukti Transaksi dalam bentuk Gambar PNG"
-          >
-            {isGeneratingImage ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-900" />
-            ) : (
-              <ImageIcon className="w-3.5 h-3.5 text-purple-900" />
-            )}
-            <span>PNG</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleShareWA}
-            disabled={isGeneratingPdf}
-            className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs disabled:opacity-50"
-            title="Bagikan Kwitansi PDF Langsung ke WhatsApp"
+            disabled={isProcessing}
+            className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-50 flex items-center justify-center gap-2"
+            title="Bagikan Bukti Gambar Kwitansi ke WhatsApp"
           >
-            {isGeneratingPdf ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Menyiapkan Gambar...</span>
+              </>
             ) : copied ? (
-              <Check className="w-3.5 h-3.5 text-white" />
+              <>
+                <Check className="w-4 h-4 text-white" />
+                <span>Tersalin!</span>
+              </>
             ) : (
-              <Share2 className="w-3.5 h-3.5 text-white" />
+              <>
+                <Share2 className="w-4 h-4 text-white" />
+                <span>Share WA (Gambar)</span>
+              </>
             )}
-            <span>{isGeneratingPdf ? 'Menyiapkan...' : copied ? 'Tersalin!' : 'Share WA (PDF)'}</span>
           </button>
         </div>
       </div>

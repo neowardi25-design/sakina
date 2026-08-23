@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Anggota, Bendahara, ProgramKegiatan, Setoran, TransactionType } from '../types';
 import { getMemberBalance, getDistinctPrograms, generateSetoranId } from '../utils/storage';
 import { formatRupiah } from '../utils/formatters';
@@ -12,7 +12,10 @@ import {
   Calendar,
   User,
   Tag,
-  FileText
+  FileText,
+  Search,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -40,6 +43,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   onSave,
 }) => {
   const [memberId, setMemberId] = useState<string>(defaultMemberId || '');
+  const [memberSearch, setMemberSearch] = useState<string>('');
+  const [isMemberDropdownOpen, setIsMemberDropdownOpen] = useState<boolean>(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const [jenis, setJenis] = useState<TransactionType>('setor');
   const [jumlah, setJumlah] = useState<number | ''>('');
   const [keteranganProgram, setKeteranganProgram] = useState<string>(defaultProgram || '');
@@ -63,6 +71,25 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setKeteranganProgram(defaultProgram);
     }
   }, [defaultProgram]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsMemberDropdownOpen(false);
+      }
+    };
+    if (isMemberDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      // Auto focus search input when dropdown opens
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMemberDropdownOpen]);
 
   if (!isOpen) return null;
 
@@ -214,40 +241,190 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Pilih Anggota */}
-          <div>
-            <label className="block text-[11px] font-medium text-slate-500 uppercase tracking-[0.5px] mb-1.5 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-slate-500" />
-              <span>Nama Anggota / Jamaah</span>
+          {/* Pilih Anggota (Searchable & Refined UI) */}
+          <div className="relative" ref={dropdownRef}>
+            <label className="block text-[11px] font-medium text-slate-500 uppercase tracking-[0.5px] mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-purple-900" />
+                <span>Pilih Nama Anggota / Jamaah</span>
+              </span>
+              <span className="text-[10.5px] text-slate-500 font-normal lowercase">
+                ({anggotaList.length} jamaah terdaftar)
+              </span>
             </label>
-            <select
-              value={memberId}
-              onChange={(e) => setMemberId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
-              required
+
+            {/* Custom Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setIsMemberDropdownOpen(!isMemberDropdownOpen)}
+              className={`w-full px-3 py-2 rounded-xl text-left border transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
+                isMemberDropdownOpen
+                  ? 'bg-white border-purple-500 ring-2 ring-purple-400/30'
+                  : 'bg-slate-50 hover:bg-white border-slate-300'
+              }`}
             >
-              <option value="" disabled>-- Pilih Nama Anggota --</option>
-              {anggotaList.map((m) => (
-                <option key={m.id_anggota} value={m.id_anggota}>
-                  {m.nama} ({m.id_anggota}) - {m.status === 'aktif' ? 'Aktif' : 'Nonaktif'}
-                </option>
-              ))}
-            </select>
+              {selectedMember ? (
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="w-6 h-6 rounded-full bg-purple-900 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+                    {selectedMember.nama.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs sm:text-sm font-semibold text-slate-800 truncate">
+                      {selectedMember.nama}
+                    </span>
+                    <span className="text-[10px] sm:text-[10.5px] font-mono font-medium px-1.5 py-0.2 rounded bg-purple-100 text-purple-900 border border-purple-200 shrink-0">
+                      {selectedMember.id_anggota}
+                    </span>
+                    {selectedMember.status === 'nonaktif' && (
+                      <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 shrink-0">
+                        Nonaktif
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <span className="text-xs sm:text-sm text-slate-500">
+                  -- Ketuk untuk Memilih Nama Anggota --
+                </span>
+              )}
+              <ChevronDown
+                className={`w-4 h-4 text-slate-500 shrink-0 transition-transform duration-200 ${
+                  isMemberDropdownOpen ? 'rotate-180 text-purple-900' : ''
+                }`}
+              />
+            </button>
+
+            {/* Dropdown Floating Panel */}
+            {isMemberDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                {/* Search Input */}
+                <div className="p-2 border-b border-slate-100 bg-slate-50/80">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      placeholder="Cari nama atau ID jamaah..."
+                      className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-slate-800 placeholder:text-slate-500"
+                    />
+                    {memberSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setMemberSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Member Items List */}
+                <div className="max-h-56 overflow-y-auto divide-y divide-slate-50 overscroll-contain">
+                  {(() => {
+                    const filtered = anggotaList.filter((m) => {
+                      const q = memberSearch.toLowerCase().trim();
+                      if (!q) return true;
+                      return (
+                        m.nama.toLowerCase().includes(q) ||
+                        m.id_anggota.toLowerCase().includes(q) ||
+                        (m.no_hp && m.no_hp.includes(q))
+                      );
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-4 text-center text-xs text-slate-500">
+                          Tidak ditemukan anggota dengan kata kunci &quot;{memberSearch}&quot;
+                        </div>
+                      );
+                    }
+
+                    return filtered.map((m) => {
+                      const isSelected = m.id_anggota === memberId;
+                      const bal = getMemberBalance(m.id_anggota, setoranList);
+
+                      return (
+                        <button
+                          key={m.id_anggota}
+                          type="button"
+                          onClick={() => {
+                            setMemberId(m.id_anggota);
+                            setIsMemberDropdownOpen(false);
+                            setMemberSearch('');
+                          }}
+                          className={`w-full px-3 py-2 text-left transition flex items-center justify-between gap-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-purple-50/90 text-purple-950 font-semibold'
+                              : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div
+                              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                isSelected
+                                  ? 'bg-purple-900 text-white'
+                                  : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {m.nama.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-semibold text-slate-800 truncate">
+                                  {m.nama}
+                                </span>
+                                <span className="text-[9.5px] font-mono text-slate-500 px-1 py-0.2 rounded bg-slate-100">
+                                  {m.id_anggota}
+                                </span>
+                                {m.status === 'nonaktif' && (
+                                  <span className="text-[9px] font-medium px-1 py-0.2 rounded bg-rose-100 text-rose-700">
+                                    Nonaktif
+                                  </span>
+                                )}
+                              </div>
+                              {m.no_hp && (
+                                <div className="text-[10px] text-slate-500 font-normal">
+                                  {m.no_hp}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0 flex items-center gap-1.5">
+                            <div>
+                              <div className="text-[11px] font-bold text-emerald-800 font-mono tabular-nums">
+                                {formatRupiah(bal)}
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-purple-900 shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
 
             {/* Member balance indicator box */}
             {selectedMember && (
-              <div className="mt-2 p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between">
+              <div className="mt-2 p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] text-emerald-800 font-medium block">
+                  <span className="text-[10px] text-emerald-800 font-medium block">
                     Saldo Tabungan Saat Ini:
                   </span>
-                  <span className="text-sm font-bold text-emerald-950 tabular-nums font-mono">
+                  <span className="text-xs sm:text-sm font-bold text-emerald-950 tabular-nums font-mono">
                     {formatRupiah(currentBalance)}
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10.5px] text-slate-500 block font-normal">No. HP</span>
-                  <span className="text-xs font-medium text-slate-700">{selectedMember.no_hp || '-'}</span>
+                  <span className="text-[10px] text-slate-500 block font-normal">Kontak HP:</span>
+                  <span className="text-[11px] font-medium text-slate-700">{selectedMember.no_hp || '-'}</span>
                 </div>
               </div>
             )}

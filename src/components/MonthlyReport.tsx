@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import html2canvas from 'html2canvas-pro';
-import { jsPDF } from 'jspdf';
 import { Anggota, Bendahara, MajlisTaklimConfig, RekapAnggota, Setoran } from '../types';
 import { formatDateIndo, formatDateShort, formatMonthYear, formatRupiah } from '../utils/formatters';
 import { APP_LOGO, APP_NAME, APP_SUBTITLE } from '../assets/logo';
@@ -15,10 +14,7 @@ import {
   ArrowUpRight,
   Users,
   Compass,
-  Download,
-  Image as ImageIcon,
-  Loader2,
-  FileDown
+  Loader2
 } from 'lucide-react';
 
 interface MonthlyReportProps {
@@ -56,8 +52,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   const [selectedMonth, setSelectedMonth] = useState<string>(defaultSelectedMonth);
   const [copiedWA, setCopiedWA] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -98,8 +93,8 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
     window.print();
   };
 
-  // Helper to generate PDF Blob of the monthly report
-  const generateReportPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
+  // Helper to generate image blob of the report
+  const generateReportImageBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
     const reportElem = document.getElementById('printable-report');
     if (!reportElem) return null;
 
@@ -110,73 +105,17 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       logging: false,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    const pdfWidth = 190; // mm (fits standard A4 width with margins)
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: [pdfWidth + 20, pdfHeight + 20],
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          resolve(null);
+          return;
+        }
+        const monthName = (monthsMap.get(selectedMonth) || selectedMonth).replace(/\s+/g, '_');
+        const filename = `Laporan_Pembukuan_${config.nama_majlis.replace(/\s+/g, '_')}_${monthName}.png`;
+        resolve({ blob, filename });
+      }, 'image/png');
     });
-
-    pdf.addImage(imgData, 'JPEG', 10, 10, pdfWidth, pdfHeight);
-    const blob = pdf.output('blob');
-    const monthName = (monthsMap.get(selectedMonth) || selectedMonth).replace(/\s+/g, '_');
-    const filename = `Laporan_Pembukuan_${config.nama_majlis.replace(/\s+/g, '_')}_${monthName}.pdf`;
-
-    return { blob, filename };
-  };
-
-  const handleDownloadPdf = async () => {
-    setIsGeneratingPdf(true);
-    try {
-      const result = await generateReportPdfBlob();
-      if (!result) throw new Error('Elemen laporan tidak ditemukan');
-
-      const url = URL.createObjectURL(result.blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = result.filename;
-      link.click();
-      URL.revokeObjectURL(url);
-      showToast('✓ File PDF Laporan berhasil diunduh!');
-    } catch (err) {
-      console.error('Gagal mengunduh PDF laporan:', err);
-      showToast('⚠️ Gagal membuat PDF laporan.');
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
-
-  const handleDownloadImage = async () => {
-    const reportElem = document.getElementById('printable-report');
-    if (!reportElem) return;
-
-    setIsGeneratingImage(true);
-    try {
-      const canvas = await html2canvas(reportElem, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-
-      const monthName = (monthsMap.get(selectedMonth) || selectedMonth).replace(/\s+/g, '_');
-      const filename = `Laporan_Pembukuan_${config.nama_majlis.replace(/\s+/g, '_')}_${monthName}.png`;
-
-      const image = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = filename;
-      link.click();
-      showToast('✓ Gambar laporan berhasil diunduh (PNG)!');
-    } catch (err) {
-      console.error('Gagal membuat gambar laporan:', err);
-      showToast('⚠️ Gagal membuat gambar laporan.');
-    } finally {
-      setIsGeneratingImage(false);
-    }
   };
 
   const handleShareWA = async () => {
@@ -203,40 +142,35 @@ _Dibuat oleh: ${config.nama_bendahara || activeBendahara.nama} (${config.jabatan
 _Mengetahui: ${config.nama_ketua || 'Ketua Majlis'} (${config.jabatan_ketua || 'Ketua Majlis'})_
 _Tanggal Cetak: ${formatDateIndo(new Date().toISOString().split('T')[0])}_`;
 
-    setIsGeneratingPdf(true);
+    setIsProcessing(true);
     try {
-      const result = await generateReportPdfBlob();
+      const result = await generateReportImageBlob();
 
-      // Try Web Share with PDF file if supported
+      // Try Web Share with image file if supported
       if (result && typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
-        const pdfFile = new File([result.blob], result.filename, { type: 'application/pdf' });
+        const imageFile = new File([result.blob], result.filename, { type: 'image/png' });
         
-        if (navigator.canShare({ files: [pdfFile] })) {
+        if (navigator.canShare({ files: [imageFile] })) {
           try {
             await navigator.share({
               title: `Laporan Pembukuan - ${config.nama_majlis}`,
               text: text,
-              files: [pdfFile],
+              files: [imageFile],
             });
-            showToast('✓ Berhasil membagikan PDF ke WhatsApp!');
-            setIsGeneratingPdf(false);
+            showToast('✓ Berhasil membagikan bukti gambar laporan ke WhatsApp!');
+            setIsProcessing(false);
             return;
           } catch (shareErr: any) {
             if (shareErr.name === 'AbortError') {
-              setIsGeneratingPdf(false);
+              setIsProcessing(false);
               return;
             }
+            console.warn('Share error fallback:', shareErr);
           }
         }
       }
 
-      // Fallback: Copy text to clipboard and open WhatsApp
-      await navigator.clipboard.writeText(text);
-      setCopiedWA(true);
-      showToast('✓ Teks laporan tersalin! Membuka WhatsApp...');
-      setTimeout(() => setCopiedWA(false), 2500);
-
-      // Auto-trigger PDF download for easy attachment on desktop
+      // Fallback: Download image and copy text to clipboard for WhatsApp Web
       if (result) {
         const url = URL.createObjectURL(result.blob);
         const link = document.createElement('a');
@@ -246,16 +180,21 @@ _Tanggal Cetak: ${formatDateIndo(new Date().toISOString().split('T')[0])}_`;
         URL.revokeObjectURL(url);
       }
 
+      await navigator.clipboard.writeText(text);
+      setCopiedWA(true);
+      showToast('✓ Gambar laporan diunduh & teks tersalin! Membuka WhatsApp...');
+      setTimeout(() => setCopiedWA(false), 2500);
+
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
     } catch (err) {
-      console.error('Error share PDF laporan:', err);
+      console.error('Error share gambar laporan:', err);
       navigator.clipboard.writeText(text).then(() => {
         setCopiedWA(true);
         setTimeout(() => setCopiedWA(false), 2500);
         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
       });
     } finally {
-      setIsGeneratingPdf(false);
+      setIsProcessing(false);
     }
   };
 
@@ -293,73 +232,39 @@ _Tanggal Cetak: ${formatDateIndo(new Date().toISOString().split('T')[0])}_`;
           </div>
         </div>
 
-        {/* Action Buttons: Cetak, PDF, Gambar (PNG), Share WA (PDF) */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+        {/* Action Buttons: Cetak & Share WA (Gambar) */}
+        <div className="flex items-center gap-2.5 pt-2 border-t border-slate-100">
           {/* Print Button */}
           <button
             onClick={handlePrint}
-            className="flex-1 min-w-[80px] px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition border border-slate-200/90 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition border border-slate-200/90 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
             title="Cetak Laporan Fisik"
           >
-            <Printer className="w-3.5 h-3.5 text-purple-900" />
+            <Printer className="w-4 h-4 text-purple-900" />
             <span>Cetak</span>
-          </button>
-
-          {/* Download PDF Button */}
-          <button
-            onClick={handleDownloadPdf}
-            disabled={isGeneratingPdf}
-            className="flex-1 min-w-[90px] px-2.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-950 text-xs font-semibold transition border border-purple-200/90 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
-            title="Download Laporan dalam format PDF"
-          >
-            {isGeneratingPdf ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-900" />
-            ) : (
-              <FileDown className="w-3.5 h-3.5 text-purple-900" />
-            )}
-            <span>PDF</span>
-          </button>
-
-          {/* Download Image Button */}
-          <button
-            onClick={handleDownloadImage}
-            disabled={isGeneratingImage}
-            className="flex-1 min-w-[90px] px-2.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-950 text-xs font-semibold transition border border-purple-200/90 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
-            title="Download Laporan dalam format Gambar PNG"
-          >
-            {isGeneratingImage ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-900" />
-            ) : (
-              <ImageIcon className="w-3.5 h-3.5 text-purple-900" />
-            )}
-            <span>PNG</span>
           </button>
 
           {/* Share WhatsApp Button */}
           <button
             onClick={handleShareWA}
-            disabled={isGeneratingPdf}
-            className={`flex-1 min-w-[120px] px-3 py-2 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition border cursor-pointer shadow-xs disabled:opacity-50 ${
-              copiedWA
-                ? 'bg-emerald-700 text-white border-emerald-700'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-2xs'
-            }`}
-            title="Kirim File PDF Laporan Langsung ke WhatsApp"
+            disabled={isProcessing}
+            className="flex-1 px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white"
+            title="Kirim Bukti Gambar Laporan Langsung ke WhatsApp"
           >
-            {isGeneratingPdf ? (
+            {isProcessing ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                <span>Menyiapkan...</span>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Menyiapkan Gambar...</span>
               </>
             ) : copiedWA ? (
               <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                <CheckCircle2 className="w-4 h-4 text-white" />
                 <span>Tersalin!</span>
               </>
             ) : (
               <>
-                <Share2 className="w-3.5 h-3.5 text-white" />
-                <span>Share WA (PDF)</span>
+                <Share2 className="w-4 h-4 text-white" />
+                <span>Share WA (Gambar)</span>
               </>
             )}
           </button>
