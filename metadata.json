@@ -1,0 +1,6 @@
+{
+  "name": "SAKINA - Simpanan Anggota Kegiatan Majlis Taklim",
+  "description": "Aplikasi SAKINA (Simpanan Anggota Kegiatan Majlis Taklim) untuk pencatatan, pemantauan, dan pembukuan tabungan program kegiatan jamaah Majlis Taklim.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
