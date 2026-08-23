@@ -65,11 +65,11 @@ function setupSakinaSheets() {
   const configData = [
     ['NAMA_APLIKASI', 'SAKINA', 'Nama Resmi Sistem Tabungan'],
     ['SUB_JUDUL', 'Simpanan Anggota Kegiatan Majlis Taklim', 'Deskripsi'],
-    ['NAMA_MAJLIS', 'Majlis Taklim Nurul Iman', 'Nama Majlis Taklim'],
-    ['KETUA_MAJLIS', 'Hj. Siti Aminah', 'Penanggung Jawab'],
-    ['BENDAHARA_UTAMA', 'Ustdzah Khadijah', 'Pencatat Keuangan'],
-    ['ALAMAT', 'Jl. Masjid No. 12, Kota Depok', 'Lokasi Majlis'],
-    ['KONTAK_WA', '0812-8901-2345', 'Nomor CS/Admin']
+    ['NAMA_MAJLIS', 'Majlis Taklim', 'Nama Majlis Taklim'],
+    ['KETUA_MAJLIS', 'Ketua Majlis', 'Penanggung Jawab'],
+    ['BENDAHARA_UTAMA', 'Bendahara Majlis', 'Pencatat Keuangan'],
+    ['ALAMAT', '', 'Lokasi Majlis'],
+    ['KONTAK_WA', '', 'Nomor CS/Admin']
   ];
   sheetConfig.getRange(1, 1, 1, 3).setValues(configHeaders)
     .setBackground('#4C1D95').setFontColor('#FFFFFF').setFontWeight('bold');

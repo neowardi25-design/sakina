@@ -79,6 +79,83 @@ export default function App() {
     setRekapList(updatedRekap);
   }, [anggotaList, setoranList]);
 
+  // Helper to extract and apply 100% data from Google Spreadsheet
+  const applySpreadsheetData = (data: NonNullable<import('./utils/googleSheetsApi').SyncResult['data']>) => {
+    const freshAnggota = data.anggota || [];
+    const freshSetoran = data.setoran || [];
+    
+    // 1. Save Members & Transactions
+    handleSaveAnggota(freshAnggota);
+    handleSaveSetoran(freshSetoran);
+
+    // 2. Save Config
+    let updatedConfig = config;
+    if (data.config) {
+      updatedConfig = {
+        ...config,
+        ...data.config,
+        last_sync_time: new Date().toISOString(),
+      };
+      handleSaveConfig(updatedConfig, false);
+    }
+
+    // 3. Dynamically Extract Programs from 100% Spreadsheet Data
+    const rawProgramNames = Array.from(
+      new Set(
+        freshSetoran
+          .map((s) => s.keterangan_program?.trim())
+          .filter((p): p is string => Boolean(p && p.length > 0 && !/^\d+$/.test(p)))
+      )
+    );
+
+    const spreadsheetPrograms: ProgramKegiatan[] = rawProgramNames.map((pName, idx) => {
+      const existing = programList.find((p) => p.nama_program.toLowerCase() === pName.toLowerCase());
+      return {
+        id_program: existing?.id_program || `PROG-${String(idx + 1).padStart(3, '0')}`,
+        nama_program: pName,
+        target_dana: existing?.target_dana || 0,
+        tanggal_pelaksanaan: existing?.tanggal_pelaksanaan || '',
+        deskripsi: existing?.deskripsi || `Program ${pName}`,
+        status: existing?.status || 'aktif',
+      };
+    });
+
+    if (spreadsheetPrograms.length > 0) {
+      handleSaveProgramList(spreadsheetPrograms);
+    }
+
+    // 4. Dynamically Extract Bendahara / Officers from 100% Spreadsheet Data
+    const recordedByNames = Array.from(
+      new Set(
+        freshSetoran
+          .map((s) => s.dicatat_oleh?.trim())
+          .filter((b): b is string => Boolean(b && b.length > 0))
+      )
+    );
+
+    const mainBendaharaName = updatedConfig.nama_bendahara?.trim();
+    if (mainBendaharaName && !recordedByNames.includes(mainBendaharaName)) {
+      recordedByNames.unshift(mainBendaharaName);
+    }
+
+    if (recordedByNames.length > 0) {
+      const colors = ['bg-emerald-700', 'bg-teal-700', 'bg-purple-700', 'bg-indigo-700', 'bg-amber-700'];
+      const dynamicBendaharaList: Bendahara[] = recordedByNames.map((nama, idx) => ({
+        id: `BND-${String(idx + 1).padStart(2, '0')}`,
+        nama,
+        peran: idx === 0 ? (updatedConfig.jabatan_bendahara || 'Bendahara Utama') : `Bendahara ${idx + 1}`,
+        avatarColor: colors[idx % colors.length],
+      }));
+
+      handleSaveBendaharaList(dynamicBendaharaList);
+      
+      // Update active bendahara if current is not in the list
+      if (!dynamicBendaharaList.some((b) => b.nama.toLowerCase() === activeBendahara.nama.toLowerCase())) {
+        handleSetActiveBendahara(dynamicBendaharaList[0]);
+      }
+    }
+  };
+
   // --- AUTO SYNC ON APP START (100% SPREADSHEET DATA) ---
   useEffect(() => {
     let isSubscribed = true;
@@ -93,25 +170,13 @@ export default function App() {
 
         if (isSubscribed) {
           if (result.success && result.data) {
-            const freshAnggota = result.data.anggota || [];
-            const freshSetoran = result.data.setoran || [];
+            applySpreadsheetData(result.data);
 
-            handleSaveAnggota(freshAnggota);
-            handleSaveSetoran(freshSetoran);
-
-            if (result.data.config) {
-              handleSaveConfig(
-                {
-                  ...config,
-                  ...result.data.config,
-                  last_sync_time: new Date().toISOString(),
-                },
-                false
-              );
-            }
+            const memberCount = result.data.anggota?.length || 0;
+            const txCount = result.data.setoran?.length || 0;
 
             setSyncStatus({
-              message: `✓ 100% Data Spreadsheet Terhubung (${freshAnggota.length} Jamaah, ${freshSetoran.length} Transaksi)`,
+              message: `✓ 100% Data Spreadsheet Terhubung (${memberCount} Jamaah, ${txCount} Transaksi)`,
               type: 'success',
             });
           } else {
@@ -154,20 +219,9 @@ export default function App() {
       const scriptUrl = config.apps_script_url || 'https://script.google.com/macros/s/AKfycbxQoyJ19Pev9Rj3_wDQQIBmxXW1W6vWi3SN2aZ1XrtFFaMdSFlPdegeV8AYqv9Ppo_v/exec';
       const result = await fetchFromGoogleSheets(scriptUrl);
       if (result.success && result.data) {
-        handleSaveAnggota(result.data.anggota || []);
-        handleSaveSetoran(result.data.setoran || []);
-        if (result.data.config) {
-          handleSaveConfig(
-            {
-              ...config,
-              ...result.data.config,
-              last_sync_time: new Date().toISOString(),
-            },
-            false
-          );
-        }
+        applySpreadsheetData(result.data);
         setSyncStatus({
-          message: `✓ Data Berhasil Disinkronkan (${result.data.anggota?.length || 0} Jamaah)`,
+          message: `✓ Data Berhasil Disinkronkan 100% (${result.data.anggota?.length || 0} Jamaah, ${result.data.setoran?.length || 0} Transaksi)`,
           type: 'success',
         });
       } else {

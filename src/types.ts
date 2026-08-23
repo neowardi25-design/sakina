@@ -87,4 +87,5 @@ export interface MajlisTaklimConfig {
   nama_bendahara?: string;
   jabatan_ketua?: string;
   jabatan_bendahara?: string;
+  periode?: string;
 }

@@ -97,13 +97,12 @@ export function loadProgramKegiatan(): ProgramKegiatan[] {
     const raw = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch (e) {
     console.error('Error loading programs:', e);
   }
-  saveProgramKegiatan(initialPrograms);
-  return initialPrograms;
+  return [];
 }
 
 export function saveProgramKegiatan(programs: ProgramKegiatan[]) {
@@ -128,10 +127,10 @@ export function loadConfig(): MajlisTaklimConfig {
         apps_script_url: parsed.apps_script_url || initialConfig.apps_script_url,
         auto_sync_sheets: parsed.auto_sync_sheets ?? true,
         daftar_program: parsed.daftar_program || loadProgramKegiatan(),
-        nama_ketua: parsed.nama_ketua || initialConfig.nama_ketua || 'H. Muhammad Syafi\'i',
-        nama_bendahara: parsed.nama_bendahara || initialConfig.nama_bendahara || 'Ustadzah Hj. Fatimah Azzahra',
-        jabatan_ketua: parsed.jabatan_ketua || initialConfig.jabatan_ketua || 'Ketua Majlis',
-        jabatan_bendahara: parsed.jabatan_bendahara || initialConfig.jabatan_bendahara || 'Bendahara Utama',
+        nama_ketua: parsed.nama_ketua || '',
+        nama_bendahara: parsed.nama_bendahara || 'Bendahara Majlis',
+        jabatan_ketua: parsed.jabatan_ketua || 'Ketua Majlis',
+        jabatan_bendahara: parsed.jabatan_bendahara || 'Bendahara Utama',
       };
     }
   } catch (e) {
@@ -308,19 +307,15 @@ export function getDistinctPrograms(
   masterPrograms?: ProgramKegiatan[]
 ): string[] {
   const masterNames = masterPrograms ? masterPrograms.map((p) => p.nama_program) : [];
-  const defaults = [
-    'Ziarah Wali Songo 2026',
-    'Wisata Religi Banten & Banten Lama',
-    'Santunan & Wisata Yatim Muharram',
-    'Ziarah Luar Batang & Habib Ali Kwitang',
-    'Wisata Religi Solo & Jogja',
-    'Milad & Khotmil Quran Majlis',
-  ];
   const list = setoranList
     .map((s) => s.keterangan_program?.trim())
-    .filter((p): p is string => Boolean(p && p.length > 0));
+    .filter((p): p is string => Boolean(p && p.length > 0 && !/^\d+$/.test(p)));
 
-  return Array.from(new Set([...masterNames, ...defaults, ...list]));
+  const combined = Array.from(new Set([...masterNames, ...list]));
+  if (combined.length === 0) {
+    return ['Tabungan Umum / Fleksibel'];
+  }
+  return combined;
 }
 
 // --- GENERATE IDS ---

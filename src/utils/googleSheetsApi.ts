@@ -15,8 +15,60 @@ export interface SyncResult {
     anggota?: Anggota[];
     setoran?: Setoran[];
     config?: Partial<MajlisTaklimConfig>;
+    programs?: any[];
   };
   timestamp?: string;
+}
+
+/**
+ * Normalizes raw key-value pairs from Google Spreadsheet Config sheet
+ */
+export function normalizeSpreadsheetConfig(raw: Record<string, any>): Partial<MajlisTaklimConfig> {
+  if (!raw || typeof raw !== 'object') return {};
+
+  const normalized: Partial<MajlisTaklimConfig> = {};
+  const lowerMap: Record<string, any> = {};
+
+  Object.keys(raw).forEach((k) => {
+    const cleanKey = k.toLowerCase().replace(/[\s_-]/g, '');
+    lowerMap[cleanKey] = raw[k];
+  });
+
+  if (lowerMap['namamajlis'] || lowerMap['majlis']) {
+    normalized.nama_majlis = String(lowerMap['namamajlis'] || lowerMap['majlis']).trim();
+  }
+  if (lowerMap['subjudul'] || lowerMap['subnama'] || lowerMap['keterangan']) {
+    normalized.sub_nama = String(lowerMap['subjudul'] || lowerMap['subnama'] || lowerMap['keterangan']).trim();
+  }
+  if (lowerMap['ketuamajlis'] || lowerMap['namaketua'] || lowerMap['ketua']) {
+    normalized.nama_ketua = String(lowerMap['ketuamajlis'] || lowerMap['namaketua'] || lowerMap['ketua']).trim();
+  }
+  if (lowerMap['bendaharautama'] || lowerMap['namabendahara'] || lowerMap['bendahara']) {
+    normalized.nama_bendahara = String(lowerMap['bendaharautama'] || lowerMap['namabendahara'] || lowerMap['bendahara']).trim();
+  }
+  if (lowerMap['jabatanketua']) {
+    normalized.jabatan_ketua = String(lowerMap['jabatanketua']).trim();
+  }
+  if (lowerMap['jabatanbendahara']) {
+    normalized.jabatan_bendahara = String(lowerMap['jabatanbendahara']).trim();
+  }
+  if (lowerMap['alamat'] || lowerMap['lokasi']) {
+    normalized.alamat = String(lowerMap['alamat'] || lowerMap['lokasi']).trim();
+  }
+  if (lowerMap['kontakwa'] || lowerMap['nokontak'] || lowerMap['nomorwa'] || lowerMap['kontak'] || lowerMap['nohp']) {
+    normalized.no_kontak = String(lowerMap['kontakwa'] || lowerMap['nokontak'] || lowerMap['nomorwa'] || lowerMap['kontak'] || lowerMap['nohp']).trim();
+  }
+  if (lowerMap['namaaplikasi'] || lowerMap['appname']) {
+    normalized.app_name = String(lowerMap['namaaplikasi'] || lowerMap['appname']).trim();
+  }
+  if (lowerMap['appsubtitle'] || lowerMap['subjudulaplikasi']) {
+    normalized.app_subtitle = String(lowerMap['appsubtitle'] || lowerMap['subjudulaplikasi']).trim();
+  }
+  if (lowerMap['periode'] || lowerMap['tahunbuku']) {
+    normalized.periode = String(lowerMap['periode'] || lowerMap['tahunbuku']).trim();
+  }
+
+  return normalized;
 }
 
 /**
@@ -47,10 +99,14 @@ export async function fetchFromGoogleSheets(
 
     const json = await response.json();
     if (json.status === 'success' && json.data) {
+      const parsedConfig = json.data.config ? normalizeSpreadsheetConfig(json.data.config) : undefined;
       return {
         success: true,
-        message: 'Data berhasil ditarik dari Google Sheets!',
-        data: json.data,
+        message: 'Data berhasil ditarik 100% dari Google Sheets!',
+        data: {
+          ...json.data,
+          config: parsedConfig,
+        },
         timestamp: json.timestamp || new Date().toISOString(),
       };
     } else {

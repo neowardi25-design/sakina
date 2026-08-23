@@ -111,7 +111,7 @@ export const ProgramHistory: React.FC<ProgramHistoryProps> = ({
             </button>
           )}
           <button
-            onClick={() => onOpenNewTransaction(undefined, 'Ziarah Wali Songo 2026')}
+            onClick={() => onOpenNewTransaction(undefined, programSummaries.length > 0 ? programSummaries[0].nama_program : undefined)}
             className="bg-purple-900 hover:bg-purple-800 text-white px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer shrink-0"
           >
             <PlusCircle className="w-4 h-4" />

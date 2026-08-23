@@ -291,7 +291,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </span>
           </div>
           <div className="text-[13.5px] sm:text-[14px] font-bold text-white mt-0.5 truncate font-display tracking-tight">
-            {mainProgram ? mainProgram.nama_program : 'Ziarah Wali Songo 2026'}
+            {mainProgram ? mainProgram.nama_program : 'Program Simpanan Kegiatan'}
           </div>
           <div className="text-[11px] text-purple-200/90 font-normal mt-0.5 truncate">
             {mainProgram
